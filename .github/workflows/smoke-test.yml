@@ -1,0 +1,107 @@
+name: smoke-test
+
+# Proves the starter pipeline runs on the bundled sample, and blocks any commit
+# that accidentally includes a real dataset.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the full pipeline on the sample
+        run: python scripts/run_all.py
+
+      - name: Check expected outputs exist
+        run: |
+          test -f outputs/model_results.json
+          test -f outputs/refresh_queue.csv
+          test -f outputs/model_report.md
+          echo "Pipeline produced expected outputs."
+
+  data-leak-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if a dataset other than the anonymized starter slice was committed
+        run: |
+          set -e
+          # Any parquet / archive is an instant fail.
+          if git ls-files | grep -E '\.(parquet|zip|tar|tar\.gz|feather)$'; then
+            echo "::error::Committed a dataset archive. Datasets must not be committed."; exit 1
+          fi
+          # Only one CSV is allowed under data/: the anonymized starter slice.
+          bad=$(git ls-files '*.csv' | grep -v -E '^(data/raw/content_refresh_anonymized\.csv|outputs/refresh_queue_sample\.csv)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Unexpected data file(s) committed:"; echo "$bad"; exit 1
+          fi
+          echo "No leaked datasets."
+
+      - name: Deliverable notebooks must carry outputs (fails once the paper ships)
+        run: |
+          python3 - <<'EOF'
+          # A filled-in work notebook committed with zero outputs usually means Colab saved
+          # an unrun copy. While you are mid-track this only warns; once submission/
+          # paper_url.txt holds a real URL (final state), it fails the build - a finished
+          # track must not ship unexecuted deliverables. Fresh skeletons stay silent.
+          import json, glob, sys
+          url = ""
+          try:
+              url = open("submission/paper_url.txt").readline().strip()
+          except Exception:
+              pass
+          final = url.startswith("https://")
+          bad = []
+          for p in sorted(glob.glob("work/notebooks/*.ipynb")):
+              try:
+                  nb = json.load(open(p))
+              except Exception:
+                  continue
+              code = [c for c in nb.get("cells", []) if c.get("cell_type") == "code"]
+              src = sum(len("".join(c.get("source", []))) for c in code)
+              has_out = any(c.get("outputs") for c in code)
+              if code and src > 200 and not has_out:
+                  kind = "error" if final else "warning"
+                  print(f"::{kind} file={p}::{p} has filled code cells but no outputs - "
+                        "did Colab save an unrun copy? Runtime -> Run all, then save again.")
+                  if final:
+                      bad.append(p)
+          if bad:
+              sys.exit(1)
+          EOF
+
+      - name: Check submission/paper_url.txt format
+        run: |
+          f=submission/paper_url.txt
+          if [ ! -f "$f" ]; then echo "::warning::$f missing - add your deployed paper URL there for the capstone."; exit 0; fi
+          line=$(head -1 "$f" | tr -d '[:space:]')
+          if [ "$line" = "PASTE-YOUR-DEPLOYED-PAPER-URL-HERE" ]; then echo "paper_url.txt still placeholder - fine until your capstone ships."; exit 0; fi
+          case "$line" in
+            https://*)
+              echo "paper_url.txt looks good: $line"
+              code=$(curl -s -o /tmp/paper.html -w '%{http_code}' -L --retry 3 --retry-delay 10 "$line" || echo 000)
+              if [ "$code" != "200" ]; then
+                echo "::warning::Deployed paper URL returned HTTP $code - if you just enabled GitHub Pages, give it a few minutes and re-run this workflow."
+              elif ! grep -qi 'flyrank\.ai' /tmp/paper.html; then
+                echo "::error::Deployed paper is missing the required data credit - add the 'Acknowledgments & data credit' section linking to https://flyrank.ai (see the capstone card)."
+                exit 1
+              else
+                echo "Deployed paper reachable and carries the flyrank.ai data credit."
+              fi;;
+            *) echo "::warning::$f should contain exactly one https:// URL on the first line.";;
+          esac
