@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Content Opportunity Scoring — ML Capstone</title>
+
+  <meta
+    name="description"
+    content="A leakage-aware machine learning study for prioritising content for human review."
+  >
+
+  <meta property="og:title" content="Content Opportunity Scoring — ML Capstone">
+  <meta
+    property="og:description"
+    content="A machine learning decision-support study using client-grouped validation."
+  >
+  <meta property="og:type" content="article">
+
+  <style>
+    :root {
+      --bg: #071011;
+      --panel: #0d1b1d;
+      --text: #eaf2f2;
+      --muted: #9fb0b2;
+      --accent: #54e0a5;
+      --border: #203436;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      line-height: 1.7;
+    }
+
+    main {
+      width: min(1000px, calc(100% - 40px));
+      margin: auto;
+      padding: 70px 0;
+    }
+
+    header {
+      padding-bottom: 50px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .16em;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      font-size: clamp(38px, 7vw, 72px);
+      line-height: 1.05;
+      margin: 15px 0 25px;
+    }
+
+    h2 {
+      margin-top: 65px;
+      font-size: 30px;
+    }
+
+    h3 {
+      margin-top: 30px;
+    }
+
+    p, li {
+      color: var(--muted);
+    }
+
+    strong {
+      color: var(--text);
+    }
+
+    .abstract,
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-top: 25px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin: 25px 0;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 30px;
+      color: var(--accent);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 25px;
+      background: var(--panel);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--accent);
+    }
+
+    code {
+      color: var(--accent);
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    img {
+      max-width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      margin-top: 20px;
+    }
+
+    footer {
+      margin-top: 80px;
+      padding-top: 30px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    @media (max-width: 700px) {
+      main {
+        width: min(100% - 24px, 1000px);
+        padding: 40px 0;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<main>
+
+<header>
+  <div class="eyebrow">Machine Learning Capstone</div>
+
+  <h1>Content Opportunity Scoring</h1>
+
+  <p>
+    A leakage-aware machine learning workflow for prioritising content
+    that may deserve human review.
+  </p>
+</header>
+
+
+<section>
+  <h2>Abstract</h2>
+
+  <div class="abstract">
+    <p>
+      This project asks whether a leakage-aware machine learning model can
+      provide a useful directional signal for prioritising content that may
+      need review. I use the FlyRank ML Internship content-refresh dataset,
+      define declining content from the available trend label, and evaluate
+      a Random Forest against a majority-class baseline using a client-grouped
+      holdout. The Random Forest achieved measured ROC AUC of 0.874 and average
+      precision of 0.752 on the held-out test set, compared with 0.500 and 0.391
+      for the baseline. The resulting ranked queue maps higher model signals
+      to human-review actions such as refresh review, performance review, or
+      monitoring. The output is intended as decision support rather than a
+      causal or autonomous content-management system.
+    </p>
+  </div>
+</section>
+
+
+<section>
+  <h2>1. Introduction / Problem Statement</h2>
+
+  <p>
+    Content teams can have many pages that require different levels of
+    attention. The practical decision is not simply whether a model can
+    classify pages, but whether its output can help a reviewer decide
+    <strong>what to inspect first</strong>.
+  </p>
+
+  <p>
+    This study therefore focuses on content opportunity scoring: producing
+    a directional ranking that helps prioritise pages for human review.
+  </p>
+</section>
+
+
+<section>
+  <h2>2. Data</h2>
+
+  <p>
+    The analysis uses the public-safe FlyRank ML Internship
+    content-refresh dataset.
+  </p>
+
+  <ul>
+    <li>Content-level search and performance aggregates.</li>
+    <li>Content age and time since last update.</li>
+    <li>Search/context variables.</li>
+    <li>Previous-30-day performance variables.</li>
+    <li>Categorical content and context features.</li>
+  </ul>
+
+  <p>
+    Rows with no positive impressions were excluded and content younger than
+    90 days was excluded. Duplicate content IDs were removed.
+  </p>
+
+  <p>
+    Client identifiers were used only for grouped validation and were not
+    used as predictive features.
+  </p>
+</section>
+
+
+<section>
+  <h2>3. Methodology</h2>
+
+  <h3>Label</h3>
+
+  <p>
+    The target is <code>is_declining_label</code>, equal to 1 when the
+    repository's <code>trend_direction</code> is <code>down</code>.
+  </p>
+
+  <h3>Feature boundary</h3>
+
+  <p>
+    The model uses search/context variables, content-length variables,
+    previous-30-day impressions, clicks and sessions, content age,
+    update age, and categorical context.
+  </p>
+
+  <p>
+    Direct label-derived fields such as
+    <code>trend_direction</code> and <code>trend_pct</code> are excluded.
+    Current 90-day performance and current engagement-related aggregates
+    are also excluded because they may overlap the label window.
+  </p>
+
+  <h3>Model</h3>
+
+  <p>
+    A Random Forest classifier was trained with class balancing,
+    bounded tree depth, a minimum leaf size, and 200 trees.
+  </p>
+
+  <h3>Validation</h3>
+
+  <p>
+    The primary evaluation uses a client-grouped holdout. Entire clients
+    are held out from training so rows from the same client do not appear
+    in both training and test data.
+  </p>
+
+  <p>
+    Training contained <strong>27,675 rows</strong> and the held-out test
+    set contained <strong>2,325 rows across 6 clients</strong>.
+  </p>
+
+  <h3>Leakage audit</h3>
+
+  <p>
+    The earlier validation audit found no direct use of label-derived
+    columns, but identified temporal-overlap risk in the original Week-5
+    feature set. This capstone therefore uses a more conservative
+    feature boundary.
+  </p>
+</section>
+
+
+<section>
+  <h2>4. Results</h2>
+
+  <div class="metrics">
+    <div class="metric">
+      <strong>0.874</strong>
+      ROC AUC
+    </div>
+
+    <div class="metric">
+      <strong>0.752</strong>
+      Average Precision
+    </div>
+
+    <div class="metric">
+      <strong>0.769</strong>
+      Accuracy
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Majority baseline</th>
+        <th>Leakage-aware Random Forest</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <tr>
+        <td>Accuracy</td>
+        <td>0.391</td>
+        <td>0.769</td>
+      </tr>
+
+      <tr>
+        <td>Precision</td>
+        <td>0.391</td>
+        <td>0.642</td>
+      </tr>
+
+      <tr>
+        <td>Recall</td>
+        <td>1.000</td>
+        <td>0.924</td>
+      </tr>
+
+      <tr>
+        <td>F1</td>
+        <td>0.562</td>
+        <td>0.758</td>
+      </tr>
+
+      <tr>
+        <td>ROC AUC</td>
+        <td>0.500</td>
+        <td>0.874</td>
+      </tr>
+
+      <tr>
+        <td>Average Precision</td>
+        <td>0.391</td>
+        <td>0.752</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    These results are measured on the same client-grouped test set.
+    They indicate that the Random Forest provides stronger discrimination
+    than the majority baseline under this validation design.
+  </p>
+</section>
+
+
+<section>
+  <h2>5. Limitations & Honest Framing</h2>
+
+  <ul>
+    <li>
+      The measured performance applies to this dataset and validation design.
+    </li>
+
+    <li>
+      Client-grouped validation is a stronger unseen-client test, but it does
+      not prove generalisation to every future client or search environment.
+    </li>
+
+    <li>
+      The conservative feature boundary reduces temporal-overlap risk but
+      does not prove that every contextual feature is perfectly time-stamped.
+    </li>
+
+    <li>
+      The model identifies observed patterns; it does not explain why a page
+      declined.
+    </li>
+
+    <li>
+      A high score does not prove that refreshing a page will improve traffic,
+      rankings, clicks, or business outcomes.
+    </li>
+
+    <li>
+      The output is a directional decision-support signal, not an autonomous
+      content-management system.
+    </li>
+  </ul>
+</section>
+
+
+<section>
+  <h2>6. Ranked Recommendations</h2>
+
+  <div class="card">
+    <h3>1. Refresh review</h3>
+
+    <p>
+      High decline signal combined with older content or a long period since
+      the last update. A reviewer should inspect freshness, relevance,
+      completeness, and search intent.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>2. Performance review</h3>
+
+    <p>
+      High decline signal without a clear freshness flag. Review search
+      performance, intent alignment, and engagement before deciding whether
+      intervention is appropriate.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>3. Monitor</h3>
+
+    <p>
+      Lower signal or insufficient evidence for immediate action. Continue
+      observation rather than forcing an intervention.
+    </p>
+  </div>
+
+  <h3>Human review rule</h3>
+
+  <p>
+    The queue determines <strong>what to inspect first</strong>, not what
+    must be changed.
+  </p>
+
+  <h3>No-go cases</h3>
+
+  <ul>
+    <li>Automatically rewriting content.</li>
+    <li>Automatically publishing changes.</li>
+    <li>Automatically deleting pages.</li>
+    <li>Automatically creating redirects.</li>
+    <li>Automatically changing search intent.</li>
+    <li>Automatically claiming a refresh will improve performance.</li>
+    <li>Automatically making business-critical SEO changes.</li>
+  </ul>
+</section>
+
+
+<section>
+  <h2>7. Reproducibility</h2>
+
+  <p>
+    The analysis is implemented in the project repository and built through
+    the weekly ML workflow.
+  </p>
+
+  <ul>
+    <li>
+      <a href="https://github.com/smaharx/ml-engineering-playground">
+        GitHub repository
+      </a>
+    </li>
+
+    <li>
+      <code>work/notebooks/w06_validation_audit.ipynb</code>
+    </li>
+
+    <li>
+      <code>work/notebooks/w07_action_playbook.ipynb</code>
+    </li>
+
+    <li>
+      <code>work/notebooks/capstone.ipynb</code>
+    </li>
+
+    <li>
+      <code>work/outputs/</code> contains generated metrics and recommendation
+      artifacts.
+    </li>
+  </ul>
+</section>
+
+
+<section>
+  <h2>8. Acknowledgments & Data Credit</h2>
+
+  <p>
+    Built on the FlyRank ML Internship dataset.
+  </p>
+
+  <p>
+    <a href="https://flyrank.ai">
+      FlyRank
+    </a>
+  </p>
+</section>
+
+
+<footer>
+  <p>
+    Machine Learning Capstone · Content Opportunity Scoring
+  </p>
+
+  <p>
+    Observed · Measured · Directional · Decision-support
+  </p>
+</footer>
+
+</main>
+
+</body>
+</html>
