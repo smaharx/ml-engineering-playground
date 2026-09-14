@@ -609,15 +609,3 @@ Public-safe project developed using the FlyRank internship dataset and workflow.
 **FlyRank:** https://flyrank.ai/
 
 **Research paper:** https://smaharx.github.io/ml-engineering-playground/
-
----
-
-## Important
-
-There is **one intentional placeholder**:
-
-```text
-ADD_YOUR_DEMO_LINK_HERE
-```
-
-Do not invent a demo URL. Replace it after recording the demo.
